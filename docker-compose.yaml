@@ -1,7 +1,7 @@
 services:
   rust:
-    image: rust:alpine3.22  # Or any other image you prefer
-    command: tail -f /dev/null  # Keeps the container running
+    image: rust:alpine3.22  
+    # command: tail -f /dev/null  
     working_dir: /opt
     volumes:
       - ./:/opt  # Bind mount everything in current directory to /opt
