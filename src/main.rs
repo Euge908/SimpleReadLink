@@ -1,5 +1,6 @@
 use std::{
     fs::read_link,
+    io,
     path::{self, Path, PathBuf},
 };
 
@@ -8,43 +9,44 @@ pub struct ReadLink {
 }
 
 impl ReadLink {
-    pub fn new(&mut self, path: &Path) -> Self {
-        return ReadLink{
-            input_path: PathBuf::from(path)
-        }
+    pub fn from(path: &Path) -> Self {
+        return ReadLink {
+            input_path: PathBuf::from(path),
+        };
     }
 
     pub fn follow_link(&self) -> Result<PathBuf, std::io::Error> {
-        let current_dir = std::env::current_dir()?;
+        let input_path = path::absolute(&self.input_path)?; // get the absolute path to avoid bugs with parent() method
 
-        let input_path_prefix = self.input_path.parent().unwrap_or(Path::new(""));
+        let input_path_parent = input_path.parent().unwrap_or(Path::new(""));
 
-        let mut path_current = PathBuf::from(&self.input_path); // initial read linked value
-        let mut path_previous;
+        let mut first_run = true;
+        let mut path_current: PathBuf = PathBuf::default();
 
-        while !path_current.as_os_str().is_empty() {
-            path_previous = path_current.clone();
+        let max_loop = 30; // there must be something wrong with you if you want to increase the amount of readlinks beyond this
+        let mut counter = 0;
 
-            if path_current.is_relative() {
-                if path_current.starts_with(".") {
-                    path_current = current_dir.join(path_current);
-                } else {
-                    path_current = input_path_prefix.join(path_current);
-                };
+        loop {
+            if first_run {
+                path_current = read_link(&self.input_path)?;
+                first_run = false;
             } else {
                 path_current = read_link(path_current)?;
             }
 
-            path_current = path::absolute(path_current)?;
+            if path_current.is_relative() {
+                path_current = input_path_parent.join(path_current);
+            }
 
-            if path_previous == path_current
-                && path_current.is_symlink()
-                && path_previous.is_symlink()
-            {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Circular symlink is not allowed!",
+            counter = counter + 1;
+
+            if counter > max_loop {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Maximum read_links exceeded!",
                 ));
+            } else if !path_current.is_symlink() {
+                break;
             }
         }
 
@@ -53,32 +55,148 @@ impl ReadLink {
     }
 }
 
-
-
 fn main() {
     println!("Hello, world!");
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ReadLink;
+    use std::path::PathBuf;
+
+    const SANDBOX_DIR: &str = "/tmp/sandbox";
 
     #[test]
-    fn test_symlink_against_file_absolute_path() {}
+    fn test_readlink_against_normal_file() {
+        let input_path = PathBuf::from(SANDBOX_DIR).join("test_file.txt");
+        let result = ReadLink::from(&input_path).follow_link();
+        assert!(result.is_err());
+    }
 
     #[test]
-    fn test_symlink_against_file_relative_path_1() {}
+    fn test_readlink_symlink_against_file_absolute_path() {
+        let input_path = PathBuf::from(SANDBOX_DIR).join("symlink_file_absolute");
+        let result = ReadLink::from(&input_path).follow_link();
+
+        let actual = PathBuf::from(SANDBOX_DIR).join("test_file.txt");
+        println!("input_path: {:?}", input_path);
+        println!("RESULT: {:?}", result);
+        assert_eq!(result.unwrap(), actual);
+    }
 
     #[test]
-    fn test_symlink_against_file_relative_path_2() {}
+    fn test_readlink_symlink_against_file_relative_path_1() {
+        let input_path = PathBuf::from(SANDBOX_DIR)
+            .join("tmp")
+            .join("test_folder")
+            .join("test_relative.sym.relative_1");
+        let result = ReadLink::from(&input_path).follow_link();
+
+        let actual = PathBuf::from(SANDBOX_DIR)
+            .join("tmp")
+            .join("test_folder")
+            .join("test_relative.txt");
+        println!("input_path: {:?}", input_path);
+        println!("RESULT: {:?}", result);
+        assert_eq!(result.unwrap(), actual);
+    }
 
     #[test]
-    fn test_symlink_against_symlink_relative_path() {}
+    fn test_readlink_symlink_against_file_relative_path_2() {
+        let input_path = PathBuf::from(SANDBOX_DIR)
+            .join("tmp")
+            .join("test_folder")
+            .join("test_relative.sym.relative_2");
+        let result = ReadLink::from(&input_path).follow_link();
+
+        let actual = PathBuf::from(SANDBOX_DIR)
+            .join("tmp")
+            .join("test_folder")
+            .join("test_relative.txt");
+        println!("input_path: {:?}", input_path);
+        println!("RESULT: {:?}", result);
+        assert_eq!(result.unwrap(), actual);
+
+
+    }
 
     #[test]
-    fn test_symlink_against_symlink_absolute_path() {}
+    fn test_readlink_symlink_against_symlink_relative_path() {
+        let input_path = PathBuf::from(SANDBOX_DIR)
+            .join("symlink_jump_3_rel_a");
+        let result = ReadLink::from(&input_path).follow_link();
+
+        let actual = PathBuf::from(SANDBOX_DIR)
+            .join("tmp")
+            .join("test_folder")
+            .join("test_relative.txt");
+        println!("input_path: {:?}", input_path);
+        println!("RESULT: {:?}", result);
+        assert_eq!(result.unwrap(), actual);
+    }
 
     #[test]
-    fn test_against_circular_symlink() {}
+    fn test_readlink_symlink_against_symlink_absolute_path() {
+        let input_path = PathBuf::from(SANDBOX_DIR)
+            .join("symlink_jump_3_rel_b");
+        let result = ReadLink::from(&input_path).follow_link();
 
-    
+        let actual = PathBuf::from(SANDBOX_DIR)
+            .join("tmp")
+            .join("test_folder")
+            .join("test_relative.txt");
+        println!("input_path: {:?}", input_path);
+        println!("RESULT: {:?}", result);
+        assert_eq!(result.unwrap(), actual);
+
+    }
+
+    #[test]
+    fn test_readlink_against_circular_symlink() {
+        // should not produce an infinite loop 
+        let input_path = PathBuf::from(SANDBOX_DIR).join("circular_c");
+        let result = ReadLink::from(&input_path).follow_link();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_readlink_against_hidden_files() {
+        let input_path = PathBuf::from(SANDBOX_DIR)
+            .join("symlink_jump_3_rel_b");
+        let result = ReadLink::from(&input_path).follow_link();
+
+        let actual = PathBuf::from(SANDBOX_DIR)
+            .join("tmp")
+            .join("test_folder")
+            .join("test_relative.txt");
+        println!("input_path: {:?}", input_path);
+        println!("RESULT: {:?}", result);
+        assert_eq!(result.unwrap(), actual);
+    }
+
+    // Test against root files
+    #[test]
+    fn test_readlink_against_files_in_root_abs() {
+        let input_path = PathBuf::from("/test_root_symlink_abs");
+        let result = ReadLink::from(&input_path).follow_link();
+
+        let actual = PathBuf::from("/test_root_file");
+        println!("input_path: {:?}", input_path);
+        println!("RESULT: {:?}", result);
+        assert_eq!(result.unwrap(), actual);
+    }
+
+
+    // Test against root files
+    #[test]
+    fn test_readlink_against_files_in_root_rel() {
+        let input_path = PathBuf::from("/test_root_symlink_rel");
+        let result = ReadLink::from(&input_path).follow_link();
+
+        let actual = PathBuf::from("/test_root_file");
+        println!("input_path: {:?}", input_path);
+        println!("RESULT: {:?}", result);
+        assert_eq!(result.unwrap(), actual);
+    }
+
 }

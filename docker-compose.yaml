@@ -1,0 +1,8 @@
+services:
+  rust:
+    image: rust:alpine3.22  # Or any other image you prefer
+    command: tail -f /dev/null  # Keeps the container running
+    working_dir: /opt
+    volumes:
+      - ./:/opt  # Bind mount everything in current directory to /opt
+    entrypoint: ["/bin/sh", "-c",  "sh /opt/scripts/generate_symlinks.sh && cargo test"]
