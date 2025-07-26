@@ -1,19 +1,39 @@
+//!
+//! A rust library to readlink a path without having the pointed file exist.
+//! A similar function in the standard library is `std::fs::canonicalize`, but this panics if the pointed path does not exist.
+//!
+//! Note: This library has only been tested in linux
+//! [View on GitHub](https://github.com/Euge908/SimpleReadLink)
 use std::{
     fs::read_link,
     io,
     path::{self, Path, PathBuf},
 };
 
-pub struct SimpleReadLink {
+/// Struct to hold the path object.
+pub struct ReadLink {
     input_path: PathBuf,
 }
 
-impl SimpleReadLink {
+impl ReadLink {
+    /// Construct object from the input path
     pub fn from(path: &Path) -> Self {
-        return SimpleReadLink {
+        return ReadLink {
             input_path: PathBuf::from(path),
         };
     }
+
+    /// Use std fs libraries to resolve input path link and then return as absolute path. This function will only allow 50 readlink operations to protect itself against circular links
+
+    /// # Example
+    /// ```rust
+
+    /// use SimpleReadLink::ReadLink;
+    /// use std::path::PathBuf;
+    /// let input_path = PathBuf::from("/path/symlink");
+    /// let result = ReadLink::from(&input_path).follow_link();
+    /// println!("{:?}", result)
+    /// ```
 
     pub fn follow_link(&self) -> Result<PathBuf, std::io::Error> {
         let input_path = path::absolute(&self.input_path)?; // get the absolute path to avoid bugs with parent() method
@@ -23,7 +43,7 @@ impl SimpleReadLink {
         let mut first_run = true;
         let mut path_current: PathBuf = PathBuf::default();
 
-        let max_loop = 30; // there must be something wrong with you if you want to increase the amount of readlinks beyond this
+        let max_loop = 50; // must be user configurable ?
         let mut counter = 0;
 
         loop {
@@ -55,10 +75,9 @@ impl SimpleReadLink {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use crate::SimpleReadLink;
+    use crate::ReadLink;
     use std::path::PathBuf;
 
     const SANDBOX_DIR: &str = "/tmp/sandbox";
@@ -66,14 +85,14 @@ mod tests {
     #[test]
     fn test_readlink_against_normal_file() {
         let input_path = PathBuf::from(SANDBOX_DIR).join("test_file.txt");
-        let result = SimpleReadLink::from(&input_path).follow_link();
+        let result = ReadLink::from(&input_path).follow_link();
         assert!(result.is_err());
     }
 
     #[test]
     fn test_readlink_symlink_against_file_absolute_path() {
         let input_path = PathBuf::from(SANDBOX_DIR).join("symlink_file_absolute");
-        let result = SimpleReadLink::from(&input_path).follow_link();
+        let result = ReadLink::from(&input_path).follow_link();
 
         let actual = PathBuf::from(SANDBOX_DIR).join("test_file.txt");
         println!("input_path: {:?}", input_path);
@@ -87,7 +106,7 @@ mod tests {
             .join("tmp")
             .join("test_folder")
             .join("test_relative.sym.relative_1");
-        let result = SimpleReadLink::from(&input_path).follow_link();
+        let result = ReadLink::from(&input_path).follow_link();
 
         let actual = PathBuf::from(SANDBOX_DIR)
             .join("tmp")
@@ -104,7 +123,7 @@ mod tests {
             .join("tmp")
             .join("test_folder")
             .join("test_relative.sym.relative_2");
-        let result = SimpleReadLink::from(&input_path).follow_link();
+        let result = ReadLink::from(&input_path).follow_link();
 
         let actual = PathBuf::from(SANDBOX_DIR)
             .join("tmp")
@@ -113,15 +132,12 @@ mod tests {
         println!("input_path: {:?}", input_path);
         println!("RESULT: {:?}", result);
         assert_eq!(result.unwrap(), actual);
-
-
     }
 
     #[test]
     fn test_readlink_symlink_against_symlink_relative_path() {
-        let input_path = PathBuf::from(SANDBOX_DIR)
-            .join("symlink_jump_3_rel_a");
-        let result = SimpleReadLink::from(&input_path).follow_link();
+        let input_path = PathBuf::from(SANDBOX_DIR).join("symlink_jump_3_rel_a");
+        let result = ReadLink::from(&input_path).follow_link();
 
         let actual = PathBuf::from(SANDBOX_DIR)
             .join("tmp")
@@ -134,9 +150,8 @@ mod tests {
 
     #[test]
     fn test_readlink_symlink_against_symlink_absolute_path() {
-        let input_path = PathBuf::from(SANDBOX_DIR)
-            .join("symlink_jump_3_rel_b");
-        let result = SimpleReadLink::from(&input_path).follow_link();
+        let input_path = PathBuf::from(SANDBOX_DIR).join("symlink_jump_3_rel_b");
+        let result = ReadLink::from(&input_path).follow_link();
 
         let actual = PathBuf::from(SANDBOX_DIR)
             .join("tmp")
@@ -145,22 +160,20 @@ mod tests {
         println!("input_path: {:?}", input_path);
         println!("RESULT: {:?}", result);
         assert_eq!(result.unwrap(), actual);
-
     }
 
     #[test]
     fn test_readlink_against_circular_symlink() {
-        // should not produce an infinite loop 
+        // should not produce an infinite loop
         let input_path = PathBuf::from(SANDBOX_DIR).join("circular_c");
-        let result = SimpleReadLink::from(&input_path).follow_link();
+        let result = ReadLink::from(&input_path).follow_link();
         assert!(result.is_err());
     }
 
     #[test]
     fn test_readlink_against_hidden_files() {
-        let input_path = PathBuf::from(SANDBOX_DIR)
-            .join("symlink_jump_3_rel_b");
-        let result = SimpleReadLink::from(&input_path).follow_link();
+        let input_path = PathBuf::from(SANDBOX_DIR).join("symlink_jump_3_rel_b");
+        let result = ReadLink::from(&input_path).follow_link();
 
         let actual = PathBuf::from(SANDBOX_DIR)
             .join("tmp")
@@ -175,25 +188,23 @@ mod tests {
     #[test]
     fn test_readlink_against_files_in_root_abs() {
         let input_path = PathBuf::from("/test_root_symlink_abs");
-        let result = SimpleReadLink::from(&input_path).follow_link();
+        let result = ReadLink::from(&input_path).follow_link();
 
         let actual = PathBuf::from("/test_root_file");
         println!("input_path: {:?}", input_path);
         println!("RESULT: {:?}", result);
         assert_eq!(result.unwrap(), actual);
     }
-
 
     // Test against root files
     #[test]
     fn test_readlink_against_files_in_root_rel() {
         let input_path = PathBuf::from("/test_root_symlink_rel");
-        let result = SimpleReadLink::from(&input_path).follow_link();
+        let result = ReadLink::from(&input_path).follow_link();
 
         let actual = PathBuf::from("/test_root_file");
         println!("input_path: {:?}", input_path);
         println!("RESULT: {:?}", result);
         assert_eq!(result.unwrap(), actual);
     }
-
 }

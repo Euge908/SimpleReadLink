@@ -1,0 +1,24 @@
+name: Cargo Build & Test 
+
+# More familiar with gitlab rather than github. Could be improved
+
+on:
+  push:
+  pull_request:
+
+env: 
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build_and_test:
+    name: Simple Read Link CI
+    runs-on: ubuntu-latest  # This starts a GitHub-hosted Ubuntu VM
+
+    container:
+      image: rust:alpine3.22  # This pulls and runs your custom Docker image
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh ./scripts/generate_symlinks.sh
+      - run: cargo build --verbose
+      - run: cargo test --verbose

@@ -2,5 +2,7 @@
 name = "SimpleReadLink"
 version = "0.0.1"
 edition = "2021"
+description = "A library to readlink a path without having the pointed file exist."
+license = "MIT"
 
 [dependencies]
